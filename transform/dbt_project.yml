@@ -1,0 +1,9 @@
+name: secpipe
+version: "1.0"
+profile: secpipe
+
+seed-paths: ["models"]
+
+models:
+  secpipe:
+    +materialized: table

@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Loaded by data_acquisition_code/download.py, unchanged from the SEC files.
+    tables:
+      - name: companies
+      - name: facts
+
+models:
+  - name: quarterly
+    description: One row per company and fiscal quarter from FY2018, in $ millions. This is the table for Power BI.
+    columns:
+      - name: cik
+        data_tests: [not_null]
+      - name: fiscal_quarter
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+      - name: revenue
+        data_tests: [not_null]
+      - name: operating_income
+        data_tests: [not_null]
+      - name: inventory
+        data_tests: [not_null]
+
+  - name: quarterly_inputs
+    description: The same inputs in long format, with the SEC tag and filing each number came from.
+    columns:
+      - name: method
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [reported, year-to-date difference, calculated]
