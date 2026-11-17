@@ -1,9 +1,11 @@
 -- One row per company and fiscal quarter from FY2018: the nine inputs in
 -- $ millions and the benchmarking measures (formulas in the README).
 --
--- Days measures compare the balance at quarter end with the last four quarters
--- of revenue or cost of sales, so seasonal peaks do not distort them.
--- Growth compares with the quarter that ended about a year earlier.
+-- Margins and days measures use the last four quarters, so seasonal peaks do
+-- not distort them. Growth compares with the quarter that ended about a year
+-- earlier. The table is also saved as dashboard/quarterly.parquet for Power BI.
+
+{{ config(post_hook="copy quarterly to '../dashboard/quarterly.parquet' (format parquet)") }}
 
 with inputs as (
     select
@@ -35,6 +37,12 @@ rolling as (
         case when count(cost_of_sales) over last_4 = 4
             and min(period_end) over last_4 >= period_end - 300
             then sum(cost_of_sales) over last_4 end as cost_of_sales_4q,
+        case when count(gross_profit) over last_4 = 4
+            and min(period_end) over last_4 >= period_end - 300
+            then sum(gross_profit) over last_4 end as gross_profit_4q,
+        case when count(operating_income) over last_4 = 4
+            and min(period_end) over last_4 >= period_end - 300
+            then sum(operating_income) over last_4 end as operating_income_4q,
         case when count(operating_cash_flow) over last_4 = 4
             and min(period_end) over last_4 >= period_end - 300
             then sum(operating_cash_flow) over last_4 end as operating_cash_flow_4q
@@ -57,24 +65,33 @@ measures as (
     select
         *,
         revenue / nullif(revenue_prior_year, 0) - 1 as revenue_growth,
-        gross_profit / nullif(revenue, 0) as gross_margin,
-        operating_income / nullif(revenue, 0) as operating_margin,
+        gross_profit_4q / nullif(revenue_4q, 0) as gross_margin,
+        operating_income_4q / nullif(revenue_4q, 0) as operating_margin,
         inventory / nullif(cost_of_sales_4q, 0) * 365 as inventory_days,
         receivables / nullif(revenue_4q, 0) * 365 as receivable_days,
         payables / nullif(cost_of_sales_4q, 0) * 365 as payable_days,
         operating_cash_flow_4q / nullif(revenue_4q, 0) as operating_cash_flow_margin,
-        inventory / nullif(inventory_prior_year, 0) - 1 as inventory_growth
+        inventory / nullif(inventory_prior_year, 0) - 1 as inventory_growth,
+        -- FY2019 = 100: the last four quarters at the end of FY2019 are that year.
+        revenue_4q / nullif(max(revenue_4q) filter (where fiscal_year = 2019 and fiscal_quarter = 4)
+            over (partition by cik), 0) * 100 as revenue_index_2019
     from with_prior_year
 )
 
 select
     m.cik,
     c.company,
+    b.brand,
+    b.subgroup,
     c.ticker,
     m.fiscal_year,
     m.fiscal_quarter,
     m.period_end,
     year(m.period_end - 45) || '-Q' || quarter(m.period_end - 45) as calendar_quarter,
+    cast(date_trunc('quarter', m.period_end - 45) as date) as calendar_quarter_start,
+    -- Calendar quarters most of the peer group has reported, for comparisons.
+    count(*) over (partition by date_trunc('quarter', m.period_end - 45))
+        >= 0.75 * (select count(*) from {{ ref('brands') }}) as calendar_quarter_complete,
     round(m.revenue, 1) as revenue,
     round(m.cost_of_sales, 1) as cost_of_sales,
     round(m.gross_profit, 1) as gross_profit,
@@ -84,6 +101,8 @@ select
     round(m.receivables, 1) as receivables,
     round(m.payables, 1) as payables,
     round(m.operating_cash_flow, 1) as operating_cash_flow,
+    round(m.revenue_4q, 1) as revenue_4q,
+    m.revenue_index_2019,
     m.revenue_growth,
     m.gross_margin,
     m.operating_margin,
@@ -97,4 +116,6 @@ select
 from measures as m
 inner join {{ source('raw', 'companies') }} as c
     on m.cik = c.cik
+inner join {{ ref('brands') }} as b
+    on m.cik = b.cik
 where m.fiscal_year >= 2018

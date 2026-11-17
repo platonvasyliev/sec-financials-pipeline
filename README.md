@@ -12,8 +12,8 @@ All data comes from the SEC's free XBRL API (data.sec.gov). No paid or licensed 
 | Folder | What it does |
 |---|---|
 | `data_acquisition_code/` | Python. `screen.py` finds the peer group and writes `peer_group.xlsx`. `download.py` downloads the SEC data for those companies and loads it into DuckDB. |
-| `transform/` | SQL (dbt). Turns the raw filings into one table with a row per company and quarter, and tests it. `measures.csv` lists which SEC tags make up each column. |
-| `dashboard/` | Power BI report (to come). |
+| `transform/` | SQL (dbt). Turns the raw filings into one table with a row per company and quarter, and tests it. `measures.csv` lists which SEC tags make up each column, `brands.csv` the short name and subgroup of each company. |
+| `dashboard/` | Power BI report. `quarterly.parquet` is the final table, so the report opens without running anything. |
 
 Downloaded files and the database are written to `data/`, which is not in the repository.
 
@@ -33,7 +33,8 @@ cd transform
 dbt build
 ```
 
-The result is the table `quarterly` in `data/sec.duckdb`.
+The result is the table `quarterly` in `data/sec.duckdb`, also saved as
+`dashboard/quarterly.parquet`.
 
 ## Selection rules
 
@@ -68,6 +69,10 @@ failed or were taken over.
 **Result.** 48 candidates, 33 with revenue of at least $500M, all 33 with full data, 32
 after excluding Cintas.
 
+**Subgroups.** For fairer comparisons the 32 are split by SIC code into footwear (7),
+apparel and accessory brands (16) and own-brand retailers (9, the additions). Hanesbrands
+makes its own clothing, so it counts as a brand despite its retail code.
+
 **Limitations.** Only companies filing 10-Ks, so Birkenstock, On, Amer Sports, Canada
 Goose and Gildan are missing. Companies that stopped filing before FY2023 (e.g. Tiffany)
 fail rule 3. SIC codes are today's codes. "Sells mainly its own brands" relies on each
@@ -97,14 +102,15 @@ company's own description.
 | Measure | Formula |
 |---|---|
 | Revenue growth | revenue / same quarter a year earlier - 1 |
-| Gross margin | gross profit / revenue |
-| Operating margin | operating income / revenue |
+| Gross margin | gross profit / revenue, last 4 quarters |
+| Operating margin | operating income / revenue, last 4 quarters |
 | Inventory days | inventory / cost of sales of the last 4 quarters x 365 |
 | Receivable days | receivables / revenue of the last 4 quarters x 365 |
 | Payable days | payables / cost of sales of the last 4 quarters x 365 |
 | Cash conversion cycle | inventory days + receivable days - payable days |
 | Inventory growth gap | inventory growth - revenue growth, both vs a year earlier |
 | Operating cash flow margin | operating cash flow / revenue, last 4 quarters |
+| Revenue index | revenue of the last 4 quarters, FY2019 = 100 |
 
 Operating margin is the main profitability measure. Gap, American Eagle, Lululemon and Cato
 include store rent in cost of sales and Nike does not, so gross margin, inventory days and
